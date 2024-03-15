@@ -47,11 +47,17 @@ type CurrencyInfo struct {
 }
 
 func main() {
-	GetCurrencyInfo()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/cotacao", GetCurrencyInfo)
+
+	err := http.ListenAndServe(":8080", mux)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // GetCurrencyInfo fetches the currency information from the API
-func GetCurrencyInfo() {
+func GetCurrencyInfo(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", economyAPIURL, nil)
@@ -61,19 +67,26 @@ func GetCurrencyInfo() {
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatal(err)
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatal(err)
 	}
 
 	var info USDBRL
 	if err := json.Unmarshal(body, &info); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatal(err)
 	}
 
-	log.Printf("Cotação do Dólar: %v", info.USDBRL.Bid)
+	_, err = w.Write([]byte("Cotação do Dólar: " + info.USDBRL.Bid))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatal(err)
+	}
 }
