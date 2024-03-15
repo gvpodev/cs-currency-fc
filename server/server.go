@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -12,7 +13,10 @@ type CustomTime struct {
 	time.Time
 }
 
-const ctLayout = "2006-01-02 15:04:05"
+const (
+	ctLayout      = "2006-01-02 15:04:05"
+	economyAPIURL = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+)
 
 func (ct *CustomTime) UnmarshalJSON(b []byte) error {
 	s := string(b[1 : len(b)-1])
@@ -43,20 +47,31 @@ type CurrencyInfo struct {
 }
 
 func main() {
-	url := "https://economia.awesomeapi.com.br/json/last/USD-BRL"
-	req, err := http.Get(url)
+	GetCurrencyInfo()
+}
+
+// GetCurrencyInfo fetches the currency information from the API
+func GetCurrencyInfo() {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", economyAPIURL, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer req.Body.Close()
 
-	res, err := io.ReadAll(req.Body)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	var info USDBRL
-	if err := json.Unmarshal(res, &info); err != nil {
+	if err := json.Unmarshal(body, &info); err != nil {
 		log.Fatal(err)
 	}
 
