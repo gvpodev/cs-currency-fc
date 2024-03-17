@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"path/filepath"
+	"os"
+	"server/migrations"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -52,28 +53,79 @@ type CurrencyInfo struct {
 	CreateDate CustomTime `json:"create_date"`
 }
 
-func main() {
-	db, err := sql.Open("sqlite3", "currency.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
+type CurrencyInfoResponse struct {
+	Bid string `json:"bid"`
+}
 
-	err = executeMigrations(db, "./migrations")
-	if err != nil {
-		log.Fatal(err)
+func main() {
+	migrateDB := flag.Bool("migratedb", false, "Set true to execute database migration")
+	flag.Parse()
+	if *migrateDB {
+		migrations.Execute()
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/cotacao", GetCurrencyInfo)
+	mux.HandleFunc("/cotacao", GetInfoHandler)
 
-	err = http.ListenAndServe(":8080", mux)
+	err := http.ListenAndServe(":8080", mux)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func InsertCurrencyInfo(info *CurrencyInfo) error {
+// GetInfoHandler fetches the currency information from the API
+func GetInfoHandler(w http.ResponseWriter, r *http.Request) {
+	info, err := getCurrencyInfo()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "Erro ao processar resposta: %v", err)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(CurrencyInfoResponse{Bid: info.USDBRL.Bid})
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "Erro ao processar resposta: %v", err)
+		return
+	}
+
+	err = insertCurrencyInfo(&info.USDBRL)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(os.Stdout, "Erro ao inserir resposta: %v", err)
+		return
+	}
+}
+
+func getCurrencyInfo() (*USDBRL, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", economyAPIURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var info *USDBRL
+	if err = json.Unmarshal(body, &info); err != nil {
+		return nil, err
+	}
+
+	return info, err
+}
+
+func insertCurrencyInfo(info *CurrencyInfo) error {
 	db, err := sql.Open("sqlite3", "currency.db")
 	if err != nil {
 		log.Fatal(err)
@@ -93,80 +145,5 @@ func InsertCurrencyInfo(info *CurrencyInfo) error {
 		log.Fatal(err)
 	}
 
-	return nil
-}
-
-// GetCurrencyInfo fetches the currency information from the API
-func GetCurrencyInfo(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", economyAPIURL, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatal(err)
-	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatal(err)
-	}
-
-	var info USDBRL
-	if err := json.Unmarshal(body, &info); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatal(err)
-	}
-
-	_, err = w.Write([]byte("Cotação do Dólar: " + info.USDBRL.Bid))
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatal(err)
-	}
-
-	err = InsertCurrencyInfo(&info.USDBRL)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatal(err)
-	}
-}
-
-func executeMigrations(db *sql.DB, dirPath string) error {
-	files, err := ioutil.ReadDir(dirPath)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		if filepath.Ext(file.Name()) == ".sql" {
-			fmt.Printf("Aplicando migração: %s\n", file.Name())
-
-			content, err := ioutil.ReadFile(filepath.Join(dirPath, file.Name()))
-			if err != nil {
-				return err
-			}
-
-			tx, err := db.Begin()
-			if err != nil {
-				return err
-			}
-
-			if _, err := tx.Exec(string(content)); err != nil {
-				tx.Rollback()
-				return err
-			}
-
-			err = tx.Commit()
-			if err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }
