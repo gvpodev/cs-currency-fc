@@ -53,10 +53,6 @@ type CurrencyInfo struct {
 	CreateDate CustomTime `json:"create_date"`
 }
 
-type CurrencyInfoResponse struct {
-	Bid string `json:"bid"`
-}
-
 func main() {
 	migrateDB := flag.Bool("migratedb", false, "Set true to execute database migration")
 	flag.Parse()
@@ -74,7 +70,7 @@ func main() {
 }
 
 // GetInfoHandler fetches the currency information from the API
-func GetInfoHandler(w http.ResponseWriter, r *http.Request) {
+func GetInfoHandler(w http.ResponseWriter, _ *http.Request) {
 	info, err := getCurrencyInfo()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -82,7 +78,7 @@ func GetInfoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(CurrencyInfoResponse{Bid: info.USDBRL.Bid})
+	err = json.NewEncoder(w).Encode(&info.USDBRL)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = fmt.Fprintf(w, "Erro ao processar resposta: %v", err)
