@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"server/migrations"
 	"time"
 
@@ -74,27 +73,31 @@ func GetInfoHandler(w http.ResponseWriter, _ *http.Request) {
 	info, err := getCurrencyInfo()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "Erro ao processar resposta: %v", err)
+		fmt.Printf("Erro ao buscar informações de cotação: %v\n", err)
+		_, _ = w.Write([]byte("Erro ao buscar informações de cotação"))
+
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(&info.USDBRL)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "Erro ao processar resposta: %v", err)
+		fmt.Printf("Erro ao processar resposta: %v\n", err)
+		_, _ = w.Write([]byte("Erro ao buscar informações de cotação"))
+
 		return
 	}
 
 	err = insertCurrencyInfo(&info.USDBRL)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(os.Stdout, "Erro ao inserir resposta: %v", err)
+		fmt.Printf("Erro ao inserir resposta: %v\n", err)
 		return
 	}
 }
 
 func getCurrencyInfo() (*USDBRL, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", economyAPIURL, nil)
