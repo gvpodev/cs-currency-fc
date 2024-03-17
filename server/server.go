@@ -139,7 +139,10 @@ func insertCurrencyInfo(info *CurrencyInfo) error {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(info.Code, info.Codein, info.Name, info.High, info.Low, info.VarBid, info.PctChange, info.Bid,
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	_, err = stmt.ExecContext(ctx, info.Code, info.Codein, info.Name, info.High, info.Low, info.VarBid, info.PctChange, info.Bid,
 		info.Ask, info.Timestamp, info.CreateDate.Time)
 	if err != nil {
 		log.Fatal(err)
